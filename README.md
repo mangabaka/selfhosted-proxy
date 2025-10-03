@@ -10,7 +10,7 @@ A setup like this is required if you want to use our API or CDN content directly
 
 We prevent direct access via CORS, preventing JavaScript to query the API and the browser from fetching images.
 
-## I already have my own Nginx setup / I don't like Docker / I don't like this project
+## I already have my own setup / I don't like Docker / I don't like this project
 
 No problem!
 
