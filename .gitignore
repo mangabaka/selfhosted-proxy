@@ -1,3 +1,4 @@
-data/
 .env
+compose.yml
 config/nginx/default.conf
+data/
