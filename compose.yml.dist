@@ -3,7 +3,7 @@ name: mangabaka-proxy
 include:
   - project_directory: .
     env_file:
-      - ./.env.default
+      - ./.env.dist
       - ./.env
     path:
       ########################################################
