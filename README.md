@@ -44,14 +44,14 @@ cp compose.yml.dist compose.yml
 cp .env.dist .env
 ```
 
-### 1) Expose Nginx to host network port
+### Deployment 1: Expose Nginx to host network port
 
 1. Uncomment the `config/compose/nginx-proxy/network-host-port` line in `compose.yml`
 1. Review the host port in your `.env` file (`NGINX_HOST_PORT`)
 1. `docker compose up -d proxy`
 1. Done
 
-### 2) Expose via Cloudflare Tunnel
+### Deployment 2: Expose via Cloudflare Tunnel
 
 1. Uncomment the two Cloudflare Tunnel lines in `compose.yml`
 1. Review the `CLOUDFLARE_TUNNEL_TOKEN` key in your `.env` file

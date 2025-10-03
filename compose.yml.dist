@@ -12,7 +12,7 @@ include:
 
       - config/compose/nginx-proxy/service.yml
       # Uncomment next line to expose nginx to host port
-      # - config/compose/nginx-proxy/network-host-port
+      # - config/compose/nginx-proxy/network-host-port.yml
 
       ########################################################
       # Cloudflare Tunnel
