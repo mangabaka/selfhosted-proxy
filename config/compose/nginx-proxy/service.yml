@@ -1,0 +1,9 @@
+services:
+  proxy:
+    image: nginx:${NGINX_VERSION}
+    restart: unless-stopped
+    container_name: mangabaka-proxy-nginx
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+      - "./config/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro"
+      - "${NGINX_CACHE_DIR:?copy .env.default file to .env }:/data/cache"

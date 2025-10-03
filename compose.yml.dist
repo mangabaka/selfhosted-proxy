@@ -1,0 +1,22 @@
+name: mangabaka-proxy
+
+include:
+  - project_directory: .
+    env_file:
+      - ./.env.default
+      - ./.env
+    path:
+      ########################################################
+      # Nginx Proxy
+      ########################################################
+
+      - config/compose/nginx-proxy/service.yml
+      # Uncomment next line to expose nginx to host port
+      # - config/compose/nginx-proxy/network-host-port
+
+      ########################################################
+      # Cloudflare Tunnel
+      ########################################################
+
+      # - config/compose/cloudflare-tunnel/service.yml
+      # - config/compose/cloudflare-tunnel/docker-network.yml

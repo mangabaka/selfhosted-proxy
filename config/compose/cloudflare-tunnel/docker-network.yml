@@ -1,0 +1,12 @@
+services:
+  cloudflare-tunnel:
+    networks:
+      - mangabaka-proxy
+
+  proxy:
+    networks:
+      - mangabaka-proxy
+
+networks:
+  mangabaka-proxy:
+    name: mangabaka-proxy

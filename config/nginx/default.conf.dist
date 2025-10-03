@@ -1,0 +1,228 @@
+# https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache_path
+proxy_cache_path /data/cache/api levels=1:2 keys_zone=cache-api:10m;
+proxy_cache_path /data/cache/cdn levels=1:2 keys_zone=cache-cdn:10m;
+
+# http://nginx.org/en/docs/http/ngx_http_core_module.html#tcp_nodelay
+tcp_nodelay on;
+
+# https://nginx.org/en/docs/http/ngx_http_core_module.html#tcp_nopush
+tcp_nopush on;
+
+# https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_buffering
+proxy_buffering off;
+
+# https://nginx.org/en/docs/http/ngx_http_core_module.html#port_in_redirect
+port_in_redirect off;
+
+# HTTP methods we allow to process
+#
+# https://nginx.org/en/docs/http/ngx_http_map_module.html
+map $request_method $method_allowed {
+  default 0;
+  GET 1;
+  HEAD 1;
+  OPTIONS 1;
+}
+
+##################################################################################
+# CORS configuration
+##################################################################################
+
+# List of hostnames that are allowed to do CORS requests to your proxy
+#
+# https://nginx.org/en/docs/http/ngx_http_map_module.html
+map $http_origin $allow_origin {
+  # Use the line below (and delete the rest) to allow any domain to do CORS against your proxy (not recommended)
+  # default $http_origin;
+
+  # CORS denied by default
+  default '';
+
+  # Hostnames that are CORS allowed (regex supported, see docs)
+  https://mangabaka.dev $http_origin;
+  https://dev.mangabaka.dev $http_origin;
+  http://localhost:8080 $http_origin;
+}
+
+##################################################################################
+# Image Hotlinking configuration
+##################################################################################
+
+# List of hostnames that are allowed to do CORS requests to your proxy
+#
+# https://nginx.org/en/docs/http/ngx_http_map_module.html
+map $http_origin $allow_hotlink {
+  # denied by default (change to 1 to allow by default)
+  default 0;
+
+  # Hostnames that are allowed to link to images
+  '' 1; # no origin (e.g. via cURL or from same domain as *this* host)
+  https://mangabaka.dev 1;
+  https://dev.mangabaka.dev 1;
+  http://localhost:8080 1; # port is
+}
+
+# The MangaBaka proxy nginx config
+server {
+  listen 80 default;
+  server_name localhost;
+
+  ##################################################################################
+  # Security
+  ##################################################################################
+
+  # We will only handle GET or HEAD requests in the proxy
+  if ($method_allowed != 1) {
+    return 400 "Only GET / HEAD / OPTIONS requests allowed";
+  }
+
+  # We don't allow proxying Personal Access Token (PAT) authentication headers
+  if ($http_x_api_key) {
+    return 400 "'x-api-key' header not allowed";
+  }
+
+  # We don't allow proxying OAuth authentication headers
+  if ($http_authorization) {
+    return 400 "'authorization' header not allowed";
+  }
+
+  ##################################################################################
+  # Shared configuration
+  ##################################################################################
+
+  # Needed for the proxy to work with Cloudflare
+  #
+  # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_server_name
+  proxy_ssl_server_name on;
+
+  # By default ANY request will be cached for 30 minutes - more specific ones
+  # are defined later
+  #
+  # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache_valid
+  proxy_cache_valid any 30m;
+
+  # This is the same timeout as upstream, no use to wait longer than that
+  #
+  # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_connect_timeout
+  proxy_connect_timeout 30s;
+
+  # Needed for keep alive and other modern necessities
+  #
+  # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_http_version
+  proxy_http_version 1.1;
+
+  # Keep connections alive to upstream for better performance
+  #
+  # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_socket_keepalive
+  proxy_socket_keepalive on;
+
+  # No need to retry requests, if it fails first time, then it will keep failing
+  #
+  # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_next_upstream
+  proxy_next_upstream ofF;
+
+  # We don't need to forward any request body upstream, since we only accept GET requests
+  #
+  # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_pass_request_body
+  proxy_pass_request_body off;
+
+  # Cache proxy certificates for up to 10min to keep reduce proxy overhead
+  #
+  # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_certificate_cache
+  proxy_ssl_certificate_cache max=10 inactive=60s valid=600s;
+
+  # Reuse SSL sessions
+  #
+  # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_session_reuse
+  proxy_ssl_session_reuse on;
+
+  # Emit some headers that Mangabaka can track usage of this service (feel free to remove)
+  #
+  # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header
+  proxy_set_header "X-Proxied-By" "MangaBaka nginx/1.0";
+  proxy_set_header "X-Proxied-For" $http_host;
+
+  # All content are public, so mark it as such
+  add_header Cache-Control "public" always;
+
+  ##################################################################################
+  # API Proxy
+  ##################################################################################
+
+  # Base API path redirects to MangaBaka API docs (feel free to change this)
+  location = /api {
+    return 301 "https://mangabaka.dev/api?utm_source=nginx-proxy";
+  }
+
+  # Path for the MangaBaka API
+  #
+  # http://localhost:8080/api/v1/series/1
+  # is the same as
+  # https://api.mangabaka.dev/v1/series/1
+  location /api/ {
+    # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_pass
+    proxy_pass https://api.mangabaka.dev/;
+
+    # Public API generally are cached for 12h, so mirroring this here
+    #
+    # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache_valid
+    proxy_cache_valid 200 12h;
+
+    # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache
+    proxy_cache cache-api;
+
+    ##################################################################################
+    # CORS configuration
+    ##################################################################################
+
+    add_header 'Access-Control-Allow-Origin' $allow_origin always;
+
+    if ($request_method = OPTIONS) {
+      add_header 'Content-Type' 'text/plain; charset=utf-8';
+      add_header 'Access-Control-Allow-Origin' $allow_origin always;
+      add_header 'Access-Control-Allow-Credentials' 'false';
+      add_header 'Content-Length' 0;
+
+      return 204;
+    }
+  }
+
+  ##################################################################################
+  # CDN Proxy
+  ##################################################################################
+
+  # Base CDN path redirects to MangaBaka (feel free to change this)
+  location = /cdn {
+    return 301 "https://mangabaka.dev/?utm_source=nginx-proxy";
+  }
+
+  # Path for the MangaBaka CDN
+  #
+  # http://localhost:8080/cdn/imgproxy/plain/x250@2/aHR0cHM6Ly9zNC5hbmlsaXN0LmNvL2ZpbGUvYW5pbGlzdGNkbi9tZWRpYS9tYW5nYS9jb3Zlci9sYXJnZS9ieDMwMDEzLUJlc2xFTXFpUGhsay5qcGc.avif
+  # is the same as
+  # http://cdn.mangabaka.dev/imgproxy/plain/x250@2/aHR0cHM6Ly9zNC5hbmlsaXN0LmNvL2ZpbGUvYW5pbGlzdGNkbi9tZWRpYS9tYW5nYS9jb3Zlci9sYXJnZS9ieDMwMDEzLUJlc2xFTXFpUGhsay5qcGc.avif
+  location /cdn/ {
+    # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_pass
+    proxy_pass https://cdn.mangabaka.dev/;
+
+    # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache
+    proxy_cache cache-cdn;
+
+    # CDN assets are immutable, so cache them for a year
+    #
+    # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache_valid
+    proxy_cache_valid 200 302 1y;
+
+    if ($allow_hotlink != 1) {
+      return 403;
+    }
+  }
+
+  ##################################################################################
+  # Default path
+  ##################################################################################
+
+  location / {
+    return 404 "Only /cdn/ and /api/ are valid endpoints";
+  }
+}
