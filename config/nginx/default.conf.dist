@@ -19,8 +19,8 @@ port_in_redirect off;
 # https://nginx.org/en/docs/http/ngx_http_map_module.html
 map $request_method $method_allowed {
   default 0;
-  GET 1;
-  HEAD 1;
+  GET     1;
+  HEAD    1;
   OPTIONS 1;
 }
 
@@ -39,9 +39,9 @@ map $http_origin $allow_origin {
   default '';
 
   # Hostnames that are CORS allowed (regex supported, see docs)
-  https://mangabaka.dev $http_origin;
+  https://mangabaka.dev     $http_origin;
   https://dev.mangabaka.dev $http_origin;
-  http://localhost:8080 $http_origin;
+  http://localhost:8080     $http_origin;
 }
 
 ##################################################################################
@@ -57,15 +57,16 @@ map $http_origin $allow_hotlink {
 
   # Hostnames that are allowed to link to images
   '' 1; # no origin (e.g. via cURL or from same domain as *this* host)
-  https://mangabaka.dev 1;
+  https://mangabaka.dev     1;
   https://dev.mangabaka.dev 1;
-  http://localhost:8080 1; # port is
+  http://localhost:8080     1; # port is required (only if used on the client)
 }
 
 # The MangaBaka proxy nginx config
 server {
   listen 80 default;
-  server_name localhost;
+
+  server_name _;
 
   ##################################################################################
   # Security
@@ -99,7 +100,7 @@ server {
   # are defined later
   #
   # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache_valid
-  proxy_cache_valid any 30m;
+  proxy_cache_valid any 15m;
 
   # This is the same timeout as upstream, no use to wait longer than that
   #
@@ -149,9 +150,16 @@ server {
   # API Proxy
   ##################################################################################
 
-  # Base API path redirects to MangaBaka API docs (feel free to change this)
-  location = /api {
-    return 301 "https://mangabaka.dev/api?utm_source=nginx-proxy";
+  location /api/mod {
+    default_type 'text/plain; charset=utf-8';
+
+    return 400 "Only public API endpoints are available via this MangaBaka Proxy";
+  }
+
+  location /api/v1/my {
+    default_type 'text/plain; charset=utf-8';
+
+    return 400 "Only public API endpoints are available via this MangaBaka Proxy";
   }
 
   # Path for the MangaBaka API
@@ -170,6 +178,12 @@ server {
 
     # https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache
     proxy_cache cache-api;
+
+    # Expect JSON going out in this endpoint
+    default_type application/json;
+
+    # Expect JSON going in to upstream
+    proxy_set_header 'Accept' 'application/json';
 
     ##################################################################################
     # CORS configuration
@@ -222,7 +236,69 @@ server {
   # Default path
   ##################################################################################
 
+  location /_health {
+    default_type 'text/plain; charset=utf-8';
+
+    return 200 'OK';
+  }
+
   location / {
-    return 404 "Only /cdn/ and /api/ are valid endpoints";
+    default_type 'text/plain; charset=utf-8';
+
+    return 404 'Only /cdn/ and /api/ are valid endpoints';
+  }
+
+  ##################################################################################
+  # Error pages
+  ##################################################################################
+
+  error_page 400 /api/400.json;
+  location /api/400.json {
+      return 400 '{"code":400,"message":"Bad Request"}';
+  }
+
+  error_page 401 /api/401.json;
+  location /api/401.json {
+      return 401 '{"code":401,"message":"Unauthorized"}';
+  }
+
+  error_page 403 /api/403.json;
+  location /api/403.json {
+      return 403 '{"code":403,"message": "Forbidden"}';
+  }
+
+  error_page 404 /api/404.json;
+  location /api/404.json {
+      return 404 '{"code":404,"message":"Not Found"}';
+  }
+
+  error_page 408 /api/408.json;
+  location /api/408.json {
+      return 408 '{"code":408,"message":"Request Timeout}';
+  }
+
+  error_page 429 /api/429.json;
+  location /api/429.json {
+      return 429 '{"code":429,"message":"Too Many Requests}';
+  }
+
+  error_page 500 /api/500.json;
+  location /api/500.json {
+      return 500 '{"code":500,"message":"Internal Server Error"}';
+  }
+
+  error_page 502 /api/502.json;
+  location /api/502.json {
+      return 502 '{"code":502,"message":"Bad Gateway"}';
+  }
+
+  error_page 503 /api/503.json;
+  location /api/503.json {
+      return 503 '{"code":503,"message":"Service Temporarily Unavailable"}';
+  }
+
+  error_page 504 /api/504.json;
+  location /api/504.json {
+      return 504 '{"code":504,"message":"Gateway Timeout"}';
   }
 }
